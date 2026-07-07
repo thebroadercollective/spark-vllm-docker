@@ -1,5 +1,7 @@
 # Recipes
 
+> **Running several recipes at once?** To co-locate multiple models on one host (each in its own container, on its own port, loaded in a controlled order), see [`../stacks/README.md`](../stacks/README.md).
+
 Recipes provide a **one-click solution** for deploying models with pre-configured settings. Each recipe is a YAML file that specifies:
 
 - HuggingFace model to download

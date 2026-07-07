@@ -92,6 +92,20 @@ To publish the server port instead of using host networking, pass the Docker por
     --port 8000 --host 0.0.0.0
 ```
 
+**Running multiple recipes on one host (stacks)**
+
+If two or more models each fit within the host's memory, you can co-locate them — each in its own container on its own port — with a **stack** manifest. Recipes are launched sequentially in the order listed (which must be **descending memory usage**), and each is health-gated on its `/health` endpoint before the next starts:
+
+```bash
+./run-stack.sh --list                     # list stacks/*.yaml
+./run-stack.sh example-dual --dry-run     # show the ordered launch plan
+./run-stack.sh example-dual --setup       # build/download as needed, then bring up
+./run-stack.sh example-dual --status      # per-container state + /health
+./run-stack.sh example-dual --stop        # tear the whole stack down
+```
+
+Stacks are a thin layer over `run-recipe.py`, so mods, model download, and command templating all work per recipe unchanged. Each recipe gets its own container (and thus its own vLLM install), so recipes needing different mod patches co-locate cleanly. This is **solo (single host) only** for now. See [`stacks/README.md`](stacks/README.md) for the manifest format, memory-budgeting guidance, and limitations.
+
 **On a cluster**
 
 It's recommended to download the model on one node and distribute across the cluster using ConnectX interconnect prior to launching. This is to avoid re-downloading the model from the Internet on every node in the cluster.
