@@ -127,7 +127,103 @@ assert_contains "mod resolved to absolute path" "$OUT" \
 assert_contains "extra_args after --" "$OUT" \
     "-- --gpu-memory-utilization-gb 60"
 
-# ---- 7. missing recipe field is rejected ----
+# ---- 7. nonexistent recipe is rejected ----
+log_test "nonexistent recipe is rejected"
+cat > "$TMPDIR_STACK/bad-recipe.yaml" <<'EOF'
+name: bad-recipe
+recipes:
+  - {recipe: this-recipe-does-not-exist, container_name: a, port: 8000}
+EOF
+OUT="$("$RUN_STACK" "$TMPDIR_STACK/bad-recipe.yaml" --dry-run 2>&1)"; RC=$?
+if [[ $RC -ne 0 && "$OUT" == *"not found"* ]]; then
+    log_pass "nonexistent recipe errors with nonzero exit"
+else
+    log_fail "nonexistent recipe errors with nonzero exit (rc=$RC)"
+    log_verbose "$OUT"
+fi
+
+# ---- 8. malformed YAML gives a clean error, not a traceback ----
+log_test "malformed YAML is rejected cleanly"
+printf 'recipes: [\n  {broken' > "$TMPDIR_STACK/malformed.yaml"
+OUT="$("$RUN_STACK" "$TMPDIR_STACK/malformed.yaml" --dry-run 2>&1)"; RC=$?
+if [[ $RC -ne 0 && "$OUT" == *"Error:"* && "$OUT" != *"Traceback"* ]]; then
+    log_pass "malformed YAML errors without a traceback"
+else
+    log_fail "malformed YAML errors without a traceback (rc=$RC)"
+    log_verbose "$OUT"
+fi
+
+# ---- 9. invalid container_name is rejected ----
+log_test "invalid container_name is rejected"
+cat > "$TMPDIR_STACK/bad-name.yaml" <<'EOF'
+name: bad-name
+recipes:
+  - {recipe: qwen3.6-35b-a3b-nvfp4, container_name: "has space", port: 8000}
+EOF
+OUT="$("$RUN_STACK" "$TMPDIR_STACK/bad-name.yaml" --dry-run 2>&1)"; RC=$?
+if [[ $RC -ne 0 && "$OUT" == *"not a valid Docker container name"* ]]; then
+    log_pass "invalid container_name errors with nonzero exit"
+else
+    log_fail "invalid container_name errors with nonzero exit (rc=$RC)"
+    log_verbose "$OUT"
+fi
+
+# ---- 10. solo_only: false and unsupported stack_version are rejected ----
+log_test "unsupported manifest options are rejected"
+cat > "$TMPDIR_STACK/cluster.yaml" <<'EOF'
+name: cluster
+solo_only: false
+recipes:
+  - {recipe: qwen3.6-35b-a3b-nvfp4, container_name: a, port: 8000}
+EOF
+OUT="$("$RUN_STACK" "$TMPDIR_STACK/cluster.yaml" --dry-run 2>&1)"; RC=$?
+if [[ $RC -ne 0 && "$OUT" == *"solo_only"* ]]; then
+    log_pass "solo_only: false errors with nonzero exit"
+else
+    log_fail "solo_only: false errors with nonzero exit (rc=$RC)"
+    log_verbose "$OUT"
+fi
+cat > "$TMPDIR_STACK/future.yaml" <<'EOF'
+stack_version: "99"
+name: future
+recipes:
+  - {recipe: qwen3.6-35b-a3b-nvfp4, container_name: a, port: 8000}
+EOF
+OUT="$("$RUN_STACK" "$TMPDIR_STACK/future.yaml" --dry-run 2>&1)"; RC=$?
+if [[ $RC -ne 0 && "$OUT" == *"unsupported stack_version"* ]]; then
+    log_pass "unsupported stack_version errors with nonzero exit"
+else
+    log_fail "unsupported stack_version errors with nonzero exit (rc=$RC)"
+    log_verbose "$OUT"
+fi
+
+# ---- 11. non-integer health_timeout names the field ----
+log_test "non-integer health_timeout is rejected"
+cat > "$TMPDIR_STACK/bad-timeout.yaml" <<'EOF'
+name: bad-timeout
+health_timeout: soon
+recipes:
+  - {recipe: qwen3.6-35b-a3b-nvfp4, container_name: a, port: 8000}
+EOF
+OUT="$("$RUN_STACK" "$TMPDIR_STACK/bad-timeout.yaml" --dry-run 2>&1)"; RC=$?
+if [[ $RC -ne 0 && "$OUT" == *"health_timeout"* ]]; then
+    log_pass "bad health_timeout errors naming the field"
+else
+    log_fail "bad health_timeout errors naming the field (rc=$RC)"
+    log_verbose "$OUT"
+fi
+
+# ---- 12. --dry-run conflicts with --stop ----
+log_test "--dry-run cannot be combined with --stop"
+OUT="$("$RUN_STACK" example-dual --stop --dry-run 2>&1)"; RC=$?
+if [[ $RC -ne 0 && "$OUT" == *"not allowed with"* ]]; then
+    log_pass "--stop --dry-run is rejected"
+else
+    log_fail "--stop --dry-run is rejected (rc=$RC)"
+    log_verbose "$OUT"
+fi
+
+# ---- 13. missing recipe field is rejected ----
 log_test "entry without 'recipe' is rejected"
 cat > "$TMPDIR_STACK/no-recipe.yaml" <<'EOF'
 name: no-recipe

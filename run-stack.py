@@ -25,6 +25,8 @@ Usage:
 """
 
 import argparse
+import re
+import shlex
 import subprocess
 import sys
 import time
@@ -43,6 +45,10 @@ RECIPES_DIR = SCRIPT_DIR / "recipes"
 DEFAULT_HEALTH_TIMEOUT = 1200  # seconds to wait for a recipe to become ready
 HEALTH_POLL_INTERVAL = 5       # seconds between /health polls
 DEFAULT_PORT = 8000
+STACK_VERSIONS = ("1",)        # manifest versions this driver understands
+
+# Docker's accepted container-name charset.
+CONTAINER_NAME_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_.-]*$")
 
 
 # --------------------------------------------------------------------------- #
@@ -79,13 +85,10 @@ def resolve_recipe_path(recipe):
     return None
 
 
-def recipe_default_port(recipe):
-    """Read defaults.port from a recipe, falling back to DEFAULT_PORT."""
-    path = resolve_recipe_path(recipe)
-    if path is None:
-        return DEFAULT_PORT
+def recipe_default_port(recipe_path):
+    """Read defaults.port from a resolved recipe, falling back to DEFAULT_PORT."""
     try:
-        data = yaml.safe_load(path.read_text()) or {}
+        data = yaml.safe_load(recipe_path.read_text()) or {}
     except (OSError, yaml.YAMLError):
         return DEFAULT_PORT
     return (data.get("defaults") or {}).get("port", DEFAULT_PORT)
@@ -102,6 +105,18 @@ def load_stack(name_or_path):
     """Load and normalize a stack manifest into a list of resolved entries."""
     path = resolve_stack_path(name_or_path)
     data = yaml.safe_load(path.read_text()) or {}
+
+    version = data.get("stack_version")
+    if version is not None and str(version) not in STACK_VERSIONS:
+        raise ValueError(
+            f"Stack '{path}': unsupported stack_version {version!r} "
+            f"(supported: {', '.join(STACK_VERSIONS)})."
+        )
+    if not data.get("solo_only", True):
+        raise ValueError(
+            f"Stack '{path}': 'solo_only: false' is not supported yet; "
+            "cluster co-location is a planned follow-up."
+        )
 
     raw_entries = data.get("recipes")
     if not raw_entries:
@@ -120,11 +135,29 @@ def load_stack(name_or_path):
                 f"Stack '{path}': entry #{i + 1} must have a 'recipe' field."
             )
         recipe = raw["recipe"]
+        recipe_path = resolve_recipe_path(recipe)
+        if recipe_path is None:
+            raise ValueError(
+                f"Stack '{path}': entry #{i + 1}: recipe '{recipe}' not found "
+                f"(looked for a file at that path and under {RECIPES_DIR}/)."
+            )
         cname = raw.get("container_name") or sanitize_name(recipe)
+        if not CONTAINER_NAME_RE.match(cname):
+            raise ValueError(
+                f"Stack '{path}': entry #{i + 1}: container_name '{cname}' is not "
+                "a valid Docker container name "
+                "(must match [a-zA-Z0-9][a-zA-Z0-9_.-]*)."
+            )
         port = raw.get("port")
         if port is None:
-            port = recipe_default_port(recipe)
-        port = int(port)
+            port = recipe_default_port(recipe_path)
+        try:
+            port = int(port)
+        except (TypeError, ValueError):
+            raise ValueError(
+                f"Stack '{path}': entry #{i + 1}: 'port' must be an integer, "
+                f"got {port!r}."
+            ) from None
 
         if cname in seen_names:
             raise ValueError(
@@ -159,10 +192,19 @@ def load_stack(name_or_path):
             }
         )
 
+    raw_timeout = data.get("health_timeout", DEFAULT_HEALTH_TIMEOUT)
+    try:
+        health_timeout = int(raw_timeout)
+    except (TypeError, ValueError):
+        raise ValueError(
+            f"Stack '{path}': 'health_timeout' must be an integer (seconds), "
+            f"got {raw_timeout!r}."
+        ) from None
+
     return {
         "path": path,
         "name": data.get("name", path.stem),
-        "health_timeout": int(data.get("health_timeout", DEFAULT_HEALTH_TIMEOUT)),
+        "health_timeout": health_timeout,
         "entries": entries,
     }
 
@@ -199,17 +241,40 @@ def is_healthy(host, port, timeout=2):
         return False
 
 
-def wait_healthy(host, port, timeout):
-    """Poll /health until ready or timeout. Returns True if it became healthy."""
+def container_state(cname):
+    """Return the container's Docker state ('running', 'exited', ...) or None if absent."""
+    result = subprocess.run(
+        ["docker", "inspect", "-f", "{{.State.Status}}", cname],
+        capture_output=True,
+        text=True,
+    )
+    return result.stdout.strip() if result.returncode == 0 else None
+
+
+def wait_healthy(host, port, cname, timeout):
+    """Poll /health until ready. Returns None on success, else a failure reason.
+
+    Also watches the container itself so a crash during startup fails fast
+    instead of waiting out the full timeout. (vLLM runs via `docker exec`, so a
+    dead vLLM process can leave the container 'running'; this catches
+    container-level death, the timeout catches the rest.)
+    """
     deadline = time.monotonic() + timeout
     url = health_url(host, port)
     print(f"    waiting for {url} (timeout {timeout}s)...", flush=True)
     while time.monotonic() < deadline:
         if is_healthy(host, port):
             print("    ready.", flush=True)
-            return True
+            return None
+        state = container_state(cname)
+        if state != "running":
+            return (
+                f"container '{cname}' "
+                + (f"is in state '{state}'" if state else "no longer exists")
+                + " before becoming healthy"
+            )
         time.sleep(HEALTH_POLL_INTERVAL)
-    return False
+    return f"did not become healthy within {timeout}s"
 
 
 # --------------------------------------------------------------------------- #
@@ -222,7 +287,7 @@ def cmd_dry_run(stack, host):
     print()
     for i, entry in enumerate(stack["entries"], 1):
         cmd = ["./run-recipe.py", *recipe_args(entry, setup=False)]
-        print(f"{i}. {' '.join(cmd)}")
+        print(f"{i}. {shlex.join(cmd)}")
         print(f"   then wait for {health_url(host, entry['port'])}")
         print()
     return 0
@@ -238,6 +303,19 @@ def cmd_up(stack, host, setup):
             f"-> container '{cname}', port {port}",
             flush=True,
         )
+        # If something is already answering /health on this port but it isn't
+        # our container, vLLM would fail to bind (host networking) while the
+        # health gate saw the impostor as "ready" — refuse up front. When it
+        # IS our container (a re-`up` of a live stack), the launcher's
+        # already-running skip keeps this idempotent.
+        if is_healthy(host, port) and container_state(cname) != "running":
+            print(
+                f"\nError: port {port} is already serving /health but container "
+                f"'{cname}' is not running — another process owns that port. "
+                f"Recipes started before this one are left running.",
+                file=sys.stderr,
+            )
+            return 1
         cmd = [sys.executable, str(RUN_RECIPE), *recipe_args(entry, setup=setup)]
         result = subprocess.run(cmd)
         if result.returncode != 0:
@@ -248,11 +326,11 @@ def cmd_up(stack, host, setup):
                 file=sys.stderr,
             )
             return result.returncode
-        if not wait_healthy(host, port, stack["health_timeout"]):
+        failure = wait_healthy(host, port, cname, stack["health_timeout"])
+        if failure:
             print(
                 f"\nError: '{entry['recipe']}' (container '{cname}', port {port}) "
-                f"did not become healthy within {stack['health_timeout']}s. "
-                f"Check logs: docker logs {cname}. "
+                f"{failure}. Check logs: docker logs {cname}. "
                 f"Recipes started before this one are left running.",
                 file=sys.stderr,
             )
@@ -286,12 +364,7 @@ def cmd_status(stack, host):
     for entry in stack["entries"]:
         cname = entry["container_name"]
         port = entry["port"]
-        state = subprocess.run(
-            ["docker", "inspect", "-f", "{{.State.Status}}", cname],
-            capture_output=True,
-            text=True,
-        )
-        state_str = state.stdout.strip() if state.returncode == 0 else "absent"
+        state_str = container_state(cname) or "absent"
         health = "ok" if is_healthy(host, port) else "-"
         print(
             f"{entry['recipe']:40s} {cname:20s} {port:>6d} "
@@ -320,16 +393,16 @@ def main():
         help="Pass --setup to each recipe (build image + download model if missing)",
     )
     parser.add_argument(
-        "--dry-run",
-        action="store_true",
-        help="Print the ordered run-recipe.py commands without executing",
-    )
-    parser.add_argument(
         "--host",
         default="localhost",
         help="Host to poll for /health (default: localhost)",
     )
     action = parser.add_mutually_exclusive_group()
+    action.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Print the ordered run-recipe.py commands without executing",
+    )
     action.add_argument("--stop", action="store_true", help="Stop the whole stack")
     action.add_argument(
         "--status", action="store_true", help="Show each container's state + health"
@@ -353,7 +426,7 @@ def main():
 
     try:
         stack = load_stack(args.stack)
-    except (FileNotFoundError, ValueError) as e:
+    except (FileNotFoundError, ValueError, yaml.YAMLError) as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1
 
