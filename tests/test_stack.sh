@@ -223,7 +223,23 @@ else
     log_verbose "$OUT"
 fi
 
-# ---- 13. missing recipe field is rejected ----
+# ---- 13. derived container names keep dotted recipe names intact ----
+log_test "shorthand entry derives the full recipe name"
+cat > "$TMPDIR_STACK/shorthand.yaml" <<'EOF'
+name: shorthand
+recipes:
+  - qwen3.6-35b-a3b-nvfp4
+EOF
+OUT="$("$RUN_STACK" "$TMPDIR_STACK/shorthand.yaml" --dry-run 2>&1)"
+assert_contains "derived name is not truncated at the first dot" "$OUT" \
+    "--name qwen3.6-35b-a3b-nvfp4"
+
+# ---- 14. --dry-run reflects --setup ----
+log_test "--dry-run --setup shows the --setup flag"
+OUT="$("$RUN_STACK" example-dual --dry-run --setup 2>&1)"
+assert_contains "planned commands include --setup" "$OUT" "--setup"
+
+# ---- 15. missing recipe field is rejected ----
 log_test "entry without 'recipe' is rejected"
 cat > "$TMPDIR_STACK/no-recipe.yaml" <<'EOF'
 name: no-recipe

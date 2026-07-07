@@ -96,7 +96,13 @@ def recipe_default_port(recipe_path):
 
 def sanitize_name(recipe):
     """Derive a Docker-safe default container name from a recipe name."""
-    base = Path(recipe).stem
+    base = Path(recipe).name
+    # Strip only a manifest extension: Path.stem would truncate dotted recipe
+    # names like 'qwen3.6-35b-a3b-nvfp4' to 'qwen3'.
+    for ext in (".yaml", ".yml"):
+        if base.endswith(ext):
+            base = base[: -len(ext)]
+            break
     cleaned = "".join(c if (c.isalnum() or c in "_.-") else "_" for c in base)
     return cleaned or "vllm_node"
 
@@ -141,12 +147,17 @@ def load_stack(name_or_path):
                 f"Stack '{path}': entry #{i + 1}: recipe '{recipe}' not found "
                 f"(looked for a file at that path and under {RECIPES_DIR}/)."
             )
-        cname = raw.get("container_name") or sanitize_name(recipe)
+        explicit_name = raw.get("container_name")
+        cname = explicit_name or sanitize_name(recipe)
         if not CONTAINER_NAME_RE.match(cname):
+            derived = (
+                "" if explicit_name
+                else f" (derived from recipe '{recipe}'; set 'container_name' explicitly)"
+            )
             raise ValueError(
                 f"Stack '{path}': entry #{i + 1}: container_name '{cname}' is not "
                 "a valid Docker container name "
-                "(must match [a-zA-Z0-9][a-zA-Z0-9_.-]*)."
+                f"(must match [a-zA-Z0-9][a-zA-Z0-9_.-]*){derived}."
             )
         port = raw.get("port")
         if port is None:
@@ -280,13 +291,13 @@ def wait_healthy(host, port, cname, timeout):
 # --------------------------------------------------------------------------- #
 # Sub-commands
 # --------------------------------------------------------------------------- #
-def cmd_dry_run(stack, host):
+def cmd_dry_run(stack, host, setup):
     print(f"=== Stack: {stack['name']} ({len(stack['entries'])} recipes) ===")
     print(f"Health timeout per recipe: {stack['health_timeout']}s")
     print("Load order (as listed == descending memory usage):")
     print()
     for i, entry in enumerate(stack["entries"], 1):
-        cmd = ["./run-recipe.py", *recipe_args(entry, setup=False)]
+        cmd = ["./run-recipe.py", *recipe_args(entry, setup=setup)]
         print(f"{i}. {shlex.join(cmd)}")
         print(f"   then wait for {health_url(host, entry['port'])}")
         print()
@@ -303,12 +314,19 @@ def cmd_up(stack, host, setup):
             f"-> container '{cname}', port {port}",
             flush=True,
         )
-        # If something is already answering /health on this port but it isn't
-        # our container, vLLM would fail to bind (host networking) while the
-        # health gate saw the impostor as "ready" — refuse up front. When it
-        # IS our container (a re-`up` of a live stack), the launcher's
-        # already-running skip keeps this idempotent.
-        if is_healthy(host, port) and container_state(cname) != "running":
+        # If something is already answering /health on this port: our own
+        # running container means this entry is already up (re-`up` is a
+        # no-op for it); anything else owns the port, and vLLM would fail to
+        # bind (host networking) while the health gate saw the impostor as
+        # "ready" — refuse up front.
+        if is_healthy(host, port):
+            if container_state(cname) == "running":
+                print(
+                    f"    '{cname}' is already up and healthy on port {port}; "
+                    "skipping.",
+                    flush=True,
+                )
+                continue
             print(
                 f"\nError: port {port} is already serving /health but container "
                 f"'{cname}' is not running — another process owns that port. "
@@ -435,7 +453,7 @@ def main():
     if args.status:
         return cmd_status(stack, args.host)
     if args.dry_run:
-        return cmd_dry_run(stack, args.host)
+        return cmd_dry_run(stack, args.host, args.setup)
     return cmd_up(stack, args.host, args.setup)
 
 
