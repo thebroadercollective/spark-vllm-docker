@@ -27,10 +27,12 @@ Serve LLMs using Docker containers running vLLM on one or more **NVIDIA DGX Spar
 ## PR conventions (drafting)
 Reference: [#310](https://github.com/eugr/spark-vllm-docker/pull/310) "feat: honor HF_HUB_CACHE and propagate HF_HUB_OFFLINE" — extends `HF_HOME` (#68) so the HF cache resolves `HF_HUB_CACHE` → `$HF_HOME/hub` → `~/.cache/huggingface/hub` (touches `hf-download.sh` HUB_PATH, `run-recipe.py` `check_model_exists()`, and `launch-cluster.sh` hub bind-mount + `HF_HUB_OFFLINE` propagation).
 - PR body structure: `## Summary` (motivating use case + cross-reference related issues/PRs by number), a per-file `Changes:` bullet list, `Notes / known limitations`, then `## Test plan` with `[x]` checkboxes.
-- Test-plan norms: run `./tests/test_recipes.sh` and cite the pass count (e.g. 56/56); `bash -n` + `py_compile` clean on changed scripts; verify the env/flag resolution matrix; prove **no regression** by showing generated `docker run` args are byte-identical to `main` when new vars are unset; include a real-world DGX Spark validation.
+- Test-plan norms: run `./tests/test_recipes.sh` (and `./tests/test_stack.sh` if stacks are touched) and cite the pass counts (e.g. 56/56); `bash -n` + `py_compile` clean on changed scripts; verify the env/flag resolution matrix; prove **no regression** by showing generated `docker run` args are byte-identical to `main` when new vars are unset; include a real-world DGX Spark validation.
 
 ## Gotchas
 - Put `run-recipe.py`'s own flags (e.g. `--dry-run`) **before** the `--` separator; everything after `--` is passed through to vLLM.
 - `--gpu-memory-utilization` is a fraction of **total** memory; the `mods/gpu-mem-util-gb` mod adds absolute-GiB (`--gpu-memory-utilization-gb`), which composes better when stacking models.
-- Containers run `sleep infinity` with the image entrypoint cleared; the actual command is injected via `docker exec` (daemon mode = `docker exec -d`).
+- Containers run `sleep infinity` with the image entrypoint cleared; the actual command is injected via `docker exec` (daemon mode = `docker exec -d`). Consequence: a crashed vLLM leaves the container `running`, so infer engine health from `/health`, not container state; containers use `--rm`, so a *dead container* shows as absent, not `exited`.
+- `launch-cluster.sh` lets `.env`'s `CONTAINER_NAME` override `--name`, but only when the requested name is the default `vllm_node`.
+- `run-recipe.py` resolves `--apply-mod` paths relative to the **cwd**, not the repo root (`run-stack.py` pre-resolves manifest mod paths for this reason).
 - Start new, unrelated features on a fresh branch cut from `main` (not stacked on an open PR branch).
