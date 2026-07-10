@@ -1433,6 +1433,8 @@ You can override the auto-detected values if needed:
 | `--master-port` / `--head-port` | Port for cluster coordination: Ray head port or PyTorch distributed master port (default: 29501). |
 | `--no-cache-dirs` | Do not mount default cache directories (~/.cache/vllm, ~/.cache/flashinfer, ~/.triton, ~/.tilelang). |
 | `--keep-entrypoint` | Keep the Docker image entrypoint instead of clearing it before launching the idle cluster container. |
+| `--earlyoom` | Run `earlyoom` as the container foreground process instead of `sleep infinity`. |
+| `--earlyoom-args` | Arguments passed to `earlyoom` (default: `-m 3,1 -s 100 -r 60`). Implies `--earlyoom`. |
 | `--launch-script` | Path to bash script to execute in the container (from examples/ directory or absolute path). If launch script is specified, action should be omitted. |
 | `-d` | Run in daemon mode (detached). |
 | `--non-privileged` | Run in non-privileged mode (removes `--privileged` and `--ipc=host`). |
@@ -1444,6 +1446,10 @@ You can override the auto-detected values if needed:
 | `--setup` | Force autodiscovery and save configuration to `.env` (even if `.env` already exists). |
 | `start \| stop \| status \| exec` | Action to perform. Use `start` for idle containers or `exec` to run a command. Not compatible with `--launch-script`. |
 | `command` | Command to execute inside the container (only for `exec` action). |
+
+### Early OOM Monitor
+
+The `--earlyoom` flag starts the idle container with `earlyoom` as PID 1 instead of `sleep infinity`, so it monitors memory while Ray and vLLM are launched with `docker exec`. The default arguments (`-m 3,1 -s 100 -r 60`) start killing when available memory is very low, ignore swap as a gating condition, and print memory reports once per minute. Use `--earlyoom-args` to tune the policy.
 
 ### Non-Privileged Mode
 

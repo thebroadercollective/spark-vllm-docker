@@ -68,6 +68,8 @@ PIDS_LIMIT="4096"
 SHM_SIZE_GB="64"
 NOFILE_LIMIT="${VLLM_SPARK_NOFILE_LIMIT:-1048576}"
 PORT_MAPPINGS=()
+ENABLE_EARLYOOM="false"
+EARLYOOM_ARGS="${VLLM_SPARK_EARLYOOM_ARGS:--m 3,1 -s 100 -r 60}"
 
 # Function to print usage
 usage() {
@@ -90,6 +92,8 @@ usage() {
     echo "  --no-ray        Default for multi-node vLLM without Ray (accepted for compatibility)"
     echo "  --no-cache-dirs Do not mount default cache directories (~/.cache/vllm, ~/.cache/flashinfer, ~/.triton, ~/.tilelang)"
     echo "  --keep-entrypoint Keep the Docker image entrypoint instead of clearing it by default"
+    echo "  --earlyoom      Run earlyoom as the container foreground process instead of sleep infinity"
+    echo "  --earlyoom-args Arguments passed to earlyoom (default: '-m 3,1 -s 100 -r 60')"
     echo "  -d              Daemon mode (only for 'start' action)"
     echo "  --non-privileged Run in non-privileged mode (removes --privileged and --ipc=host)"
     echo "  --mem-limit-gb  Memory limit in GB (default: 110, only with --non-privileged)"
@@ -173,6 +177,9 @@ while [[ "$#" -gt 0 ]]; do
             ;;
         --no-cache-dirs) MOUNT_CACHE_DIRS="false" ;;
         --keep-entrypoint) KEEP_ENTRYPOINT="true" ;;
+        --earlyoom) ENABLE_EARLYOOM="true" ;;
+        --earlyoom-args) ENABLE_EARLYOOM="true"; EARLYOOM_ARGS="$2"; shift ;;
+        --earlyoom-args=*) ENABLE_EARLYOOM="true"; EARLYOOM_ARGS="${1#*=}" ;;
         --non-privileged) NON_PRIVILEGED_MODE="true" ;;
         --mem-limit-gb) MEM_LIMIT_GB="$2"; shift ;;
         --mem-swap-limit-gb) MEM_SWAP_LIMIT_GB="$2"; shift ;;
@@ -330,6 +337,12 @@ else
             exit 1
         fi
     done
+fi
+
+if [[ "$ENABLE_EARLYOOM" == "true" && "$KEEP_ENTRYPOINT" == "true" ]]; then
+    echo "Error: --earlyoom requires launch-cluster.sh to clear the image entrypoint."
+    echo "       Remove --keep-entrypoint so earlyoom can run as the foreground process."
+    exit 1
 fi
 
 if ! [[ "$NOFILE_LIMIT" =~ ^[1-9][0-9]*$ ]]; then
@@ -980,6 +993,14 @@ start_ray_worker() {
           --address=$HEAD_IP:$MASTER_PORT --node-ip-address $worker_ip >> /proc/1/fd/1 2>&1'"
 }
 
+container_keepalive_command() {
+    if [[ "$ENABLE_EARLYOOM" == "true" ]]; then
+        printf 'earlyoom %s' "$EARLYOOM_ARGS"
+    else
+        printf 'sleep infinity'
+    fi
+}
+
 # Start Cluster Function
 start_cluster() {
     check_cluster_running
@@ -1014,6 +1035,8 @@ start_cluster() {
         docker_caps_args="--privileged"
         docker_resource_args="--ulimit nofile=${NOFILE_LIMIT}:${NOFILE_LIMIT} --ipc=host"
     fi
+    local keepalive_cmd
+    keepalive_cmd="$(container_keepalive_command)"
 
     # Start Head Node
     echo "Starting Head Node on $HEAD_IP..."
@@ -1023,7 +1046,7 @@ start_cluster() {
         done
     fi
     docker run $docker_caps_args $docker_resource_args \
-        $(get_env_flags "$HEAD_IP") $docker_args_common sleep infinity
+        $(get_env_flags "$HEAD_IP") $docker_args_common $keepalive_cmd
 
     # Start Worker Nodes
     for worker in "${PEER_NODES[@]}"; do
@@ -1032,7 +1055,7 @@ start_cluster() {
             ssh "$worker" "mkdir -p ${CACHE_DIRS_TO_CREATE[*]}"
         fi
         local docker_run_cmd="docker run $docker_caps_args $docker_resource_args $(get_env_flags "$worker") $docker_args_common"
-        ssh "$worker" "$docker_run_cmd sleep infinity"
+        ssh "$worker" "$docker_run_cmd $keepalive_cmd"
     done
 
     # Apply mods (containers are idle — no mod_done sync needed)

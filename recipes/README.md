@@ -210,6 +210,8 @@ Launch options:
   -j N                        Number of parallel build jobs
   --no-cache-dirs             Do not mount ~/.cache/vllm, ~/.cache/flashinfer, ~/.triton
   --keep-entrypoint           Keep the Docker image entrypoint
+  --earlyoom                  Run earlyoom as the container foreground process
+  --earlyoom-args ARGS        Arguments passed to earlyoom
   --non-privileged            Run container without --privileged
   --mem-limit-gb N            Memory limit in GB (only with --non-privileged)
   --mem-swap-limit-gb N       Memory+swap limit in GB (only with --non-privileged)
