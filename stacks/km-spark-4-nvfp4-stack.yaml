@@ -1,0 +1,47 @@
+stack_version: "1"
+name: km-spark-4-stack
+description: >
+
+# Solo (single host) is the only mode supported today.
+solo_only: true
+
+# Seconds to wait for each recipe's /health before giving up (optional).
+health_timeout: 1200
+
+# Recipes are served in the order listed, and that order MUST be
+# DESCENDING memory usage: the largest model claims its slice of the unified
+# memory pool first (and fails fast if it won't fit), then the next is started
+# only after the previous one reports healthy.
+recipes:
+  # ---- Largest first ----
+  - recipe: km-extract-nvfp4
+    container_name: km-extract     # Docker --name; must be unique in this stack
+    #port: 8000                     # served on http://host:8000
+    gpu_mem: 0.40                  # fraction of unified memory (run-recipe.py --gpu-mem)
+
+  # ---- Smaller second ----
+  - recipe: km-ocr
+    container_name: km-ocr
+    #port: 8001                     # served on http://host:8001
+    gpu_mem: 0.3
+
+# The two gpu_mem fractions above sum to 0.90, leaving headroom for CUDA
+# context and non-torch allocations on the shared 128 GB pool.
+#
+# ----------------------------------------------------------------------------
+# PREFERRED for stacking: absolute GiB budgets compose more predictably than
+# fractions-of-total. Add the gpu-mem-util-gb mod (which patches vLLM to accept
+# --gpu-memory-utilization-gb) and pass the flag via extra_args, e.g.:
+#
+#   - recipe: qwen3.6-35b-a3b-nvfp4
+#     container_name: qwen_nvfp4
+#     port: 8000
+#     mods: [mods/gpu-mem-util-gb]
+#     extra_args: ["--gpu-memory-utilization-gb", "60"]
+#
+#   - recipe: nemotron-3-nano-nvfp4
+#     container_name: nemotron_nano
+#     port: 8001
+#     mods: [mods/gpu-mem-util-gb]
+#     extra_args: ["--gpu-memory-utilization-gb", "40"]
+# ----------------------------------------------------------------------------
