@@ -1,0 +1,41 @@
+# Recipe: Qwen/Qwen3-VL-8B-Instruct
+# Qwen/Qwen3-VL-8B-Instruct
+
+
+recipe_version: "1"
+name: Qwen/Qwen3-VL-8B-Instruct
+description: vLLM serving Qwen/Qwen3-VL-8B-Instruct
+
+# HuggingFace model to download (optional, for --download-model)
+model: Qwen/Qwen3-VL-8B-Instruct
+
+solo_only: true
+
+# Container image to use
+container: vllm-node
+
+
+# Default settings (can be overridden via CLI)
+defaults:
+  port: 8005
+  host: 0.0.0.0
+  gpu_memory_utilization: 0.3
+  max_model_len: 16384
+  max_num_batched_tokens: 4096
+
+
+# The vLLM serve command template
+command: |
+  vllm serve Qwen/Qwen3-VL-8B-Instruct \
+    --host {host} \
+    --port {port} \
+    --served-model-name km-ocr \
+    --max-model-len {max_model_len} \
+    --max-num-batched-tokens {max_num_batched_tokens} \
+    --gpu-memory-utilization {gpu_memory_utilization} \
+    --kv-cache-dtype fp8 \
+    --load-format instanttensor \
+    --attention-backend flashinfer \
+    --enable-prefix-caching \
+    --trust-remote-code \
+    --seed 0
