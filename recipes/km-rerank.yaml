@@ -1,0 +1,42 @@
+# Recipe: BAAI/bge-reranker-v2-m3
+# BAAI/bge-reranker-v2-m3
+
+
+recipe_version: "1"
+name: BAAI/bge-reranker-v2-m3
+description: vLLM serving BAAI/bge-reranker-v2-m3
+
+# HuggingFace model to download (optional, for --download-model)
+model: BAAI/bge-reranker-v2-m3
+
+solo_only: true
+
+# Container image to use
+container: vllm-node
+
+mods:
+  - mods/pip-orjson
+
+# Default settings (can be overridden via CLI)
+defaults:
+  port: 8004
+  host: 0.0.0.0
+  gpu_memory_utilization: 0.12
+  max_model_len: 8192
+  max_num_batched_tokens: 4096
+
+# Environment variables
+env:
+  VLLM_MARLIN_USE_ATOMIC_ADD: 1
+
+# The vLLM serve command template
+command: |
+  vllm serve BAAI/bge-reranker-v2-m3 \
+    --host {host} \
+    --port {port} \
+    --served-model-name km-rerank \
+    --trust-remote-code \
+    --runner pooling \
+    --convert classify \
+    --gpu-memory-utilization {gpu_memory_utilization} \
+    --max-model-len {max_model_len} 
