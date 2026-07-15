@@ -909,7 +909,7 @@ Examples:
         "--earlyoom-args",
         dest="earlyoom_args",
         metavar="ARGS",
-        help="Arguments passed to earlyoom (default: '-m 3,1 -s 100 -r 60')",
+        help="Arguments passed to earlyoom (default: '-M 524288,102400 -s 100 -r 60')",
     )
     launch_group.add_argument(
         "--non-privileged",

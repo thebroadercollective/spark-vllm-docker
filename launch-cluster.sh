@@ -69,7 +69,7 @@ SHM_SIZE_GB="64"
 NOFILE_LIMIT="${VLLM_SPARK_NOFILE_LIMIT:-1048576}"
 PORT_MAPPINGS=()
 ENABLE_EARLYOOM="false"
-EARLYOOM_ARGS="${VLLM_SPARK_EARLYOOM_ARGS:--m 3,1 -s 100 -r 60}"
+EARLYOOM_ARGS="${VLLM_SPARK_EARLYOOM_ARGS:--M 524288,102400 -s 100 -r 60}"
 
 # Function to print usage
 usage() {
@@ -93,7 +93,7 @@ usage() {
     echo "  --no-cache-dirs Do not mount default cache directories (~/.cache/vllm, ~/.cache/flashinfer, ~/.triton, ~/.tilelang)"
     echo "  --keep-entrypoint Keep the Docker image entrypoint instead of clearing it by default"
     echo "  --earlyoom      Run earlyoom as the container foreground process instead of sleep infinity"
-    echo "  --earlyoom-args Arguments passed to earlyoom (default: '-m 3,1 -s 100 -r 60')"
+    echo "  --earlyoom-args Arguments passed to earlyoom (default: '-M 524288,102400 -s 100 -r 60')"
     echo "  -d              Daemon mode (only for 'start' action)"
     echo "  --non-privileged Run in non-privileged mode (removes --privileged and --ipc=host)"
     echo "  --mem-limit-gb  Memory limit in GB (default: 110, only with --non-privileged)"

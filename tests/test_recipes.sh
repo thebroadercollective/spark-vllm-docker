@@ -983,11 +983,11 @@ test_launch_cmd_earlyoom_passthrough() {
     fi
 
     output=$("$PROJECT_DIR/run-recipe.py" "$recipe_name" --dry-run --solo \
-        --earlyoom --earlyoom-args "-m 4,2 -s 100 -r 120" 2>&1)
+        --earlyoom --earlyoom-args "-M 786432,196608 -s 100 -r 120" 2>&1)
     launch_cmd=$(extract_launch_cmd "$output")
 
     if echo "$launch_cmd" | grep -q "\-\-earlyoom" && \
-       echo "$launch_cmd" | grep -q "\-\-earlyoom-args -m 4,2 -s 100 -r 120"; then
+       echo "$launch_cmd" | grep -q "\-\-earlyoom-args -M 786432,196608 -s 100 -r 120"; then
         log_pass "Launch command includes --earlyoom and custom args"
     else
         log_fail "--earlyoom flags not found in launch command"
