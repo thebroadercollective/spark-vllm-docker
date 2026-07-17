@@ -14,18 +14,18 @@ health_timeout: 300
 # only after the previous one reports healthy.
 recipes:
   # ---- Largest first ----
-  - recipe: km-embed-visual
+  - recipe: km-embed-visual-retrieval
     container_name: km-embed-visual
     #port: 8001                     # served on http://host:8001
-    gpu_mem: 0.23
+    gpu_mem: 0.3
 
   - recipe: km-rerank
     container_name: km-rerank
-    gpu_mem: 0.19
+    gpu_mem: 0.2
 
-  - recipe: km-embed-text
+  - recipe: km-embed-text-retrieval
     container_name: km-embed-text
-    gpu_mem: 0.13
+    gpu_mem: 0.15
 # The two gpu_mem fractions above sum to 0.90, leaving headroom for CUDA
 # context and non-torch allocations on the shared 128 GB pool.
 #

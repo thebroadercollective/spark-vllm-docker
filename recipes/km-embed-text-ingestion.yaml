@@ -1,0 +1,44 @@
+# Recipe: BAAI/bge-m3
+# BAAI/bge-m3
+
+
+recipe_version: "1"
+name: BAAI/bge-m3
+description: vLLM serving BAAI/bge-m3
+
+# HuggingFace model to download (optional, for --download-model)
+model: BAAI/bge-m3
+
+solo_only: true
+
+# Container image to use
+container: vllm-node
+
+mods:
+  - mods/pip-orjson
+
+# Default settings (can be overridden via CLI)
+defaults:
+  port: 8002
+  host: 0.0.0.0
+  gpu_memory_utilization: 0.15
+  max_model_len: 8192
+  max_num_batched_tokens: 4096
+  max_num_seqs: 8
+
+# Environment variables
+env:
+  VLLM_MARLIN_USE_ATOMIC_ADD: 1
+
+# The vLLM serve command template
+command: |
+  vllm serve BAAI/bge-m3 \
+    --host {host} \
+    --port {port} \
+    --hf-overrides '{{"matryoshka_dimensions":[1024]}}' \
+    --served-model-name km-embed-text-ingestion \
+    --trust-remote-code \
+    --gpu-memory-utilization {gpu_memory_utilization} \
+    --max-model-len {max_model_len} \
+    --max-num-seqs {max_num_seqs} 
+

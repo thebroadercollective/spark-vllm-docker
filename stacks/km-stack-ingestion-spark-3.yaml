@@ -20,12 +20,12 @@ recipes:
     gpu_mem: 0.5                  # fraction of unified memory (run-recipe.py --gpu-mem)
 
   # ---- Smaller second ----
-  - recipe: km-embed-visual
+  - recipe: km-embed-visual-ingestion
     container_name: km-embed-visual
     #port: 8001                     # served on http://host:8001
     gpu_mem: 0.23
 
-  - recipe: km-embed-text
+  - recipe: km-embed-text-ingestion
     container_name: km-embed-text
     gpu_mem: 0.13
 
