@@ -6,7 +6,7 @@ description: >
 solo_only: true
 
 # Seconds to wait for each recipe's /health before giving up (optional).
-health_timeout: 1200
+health_timeout: 300
 
 # Recipes are served in the order listed, and that order MUST be
 # DESCENDING memory usage: the largest model claims its slice of the unified

@@ -20,8 +20,10 @@ defaults:
   port: 8005
   host: 0.0.0.0
   gpu_memory_utilization: 0.3
-  max_model_len: 16384
-  max_num_batched_tokens: 4096
+  max_model_len: 20480
+  max_num_batched_tokens: 8192
+  max_num_seqs: 5
+
 
 
 # The vLLM serve command template
@@ -34,8 +36,10 @@ command: |
     --max-num-batched-tokens {max_num_batched_tokens} \
     --gpu-memory-utilization {gpu_memory_utilization} \
     --kv-cache-dtype fp8 \
+    --limit-mm-per-prompt.video 0 \
     --load-format instanttensor \
-    --attention-backend flashinfer \
+    --max-num-seqs {max_num_seqs} \
+    --generation-config auto \
     --enable-prefix-caching \
     --trust-remote-code \
     --seed 0
