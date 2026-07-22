@@ -22,8 +22,8 @@ defaults:
   port: 8001
   host: 0.0.0.0
   gpu_memory_utilization: 0.40
-  max_model_len: 32768
-  max_num_batched_tokens: 8192
+  max_model_len: 49152
+  max_num_batched_tokens: 16384
   max_num_seqs: 8
 
 # Environment variables
@@ -46,7 +46,6 @@ command: |
     --kv-cache-dtype fp8 \
     --load-format instanttensor \
     --attention-backend flashinfer \
-    --enable-prefix-caching \
     --default-chat-template-kwargs '{{"enable_thinking": false}}' \
-    --speculative-config '{{"method": "mtp", "num_speculative_tokens": 3}}' \
+    --speculative-config '{{"method": "mtp", "num_speculative_tokens": 2}}' \
     --distributed-executor-backend ray
