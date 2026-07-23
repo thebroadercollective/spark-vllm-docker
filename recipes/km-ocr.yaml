@@ -37,9 +37,10 @@ command: |
     --gpu-memory-utilization {gpu_memory_utilization} \
     --kv-cache-dtype fp8 \
     --limit-mm-per-prompt.video 0 \
+    --disable-mm-preprocessor-cache \
+    --no-enable-prefix-caching \
     --load-format instanttensor \
     --max-num-seqs {max_num_seqs} \
     --generation-config auto \
-    --enable-prefix-caching \
     --trust-remote-code \
     --seed 0

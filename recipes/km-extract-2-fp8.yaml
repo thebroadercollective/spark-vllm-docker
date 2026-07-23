@@ -41,6 +41,7 @@ command: |
     --max-num-seqs {max_num_seqs} \
     --gpu-memory-utilization {gpu_memory_utilization} \
     --enable-auto-tool-choice \
+    --no-enable-prefix-caching \
     --tool-call-parser qwen3_xml \
     --reasoning-parser qwen3 \
     --kv-cache-dtype fp8 \
