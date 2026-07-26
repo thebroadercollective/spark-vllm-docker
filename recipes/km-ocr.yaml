@@ -37,7 +37,7 @@ command: |
     --gpu-memory-utilization {gpu_memory_utilization} \
     --kv-cache-dtype fp8 \
     --limit-mm-per-prompt.video 0 \
-    --disable-mm-preprocessor-cache \
+    --mm-processor-cache-gb 1 \
     --no-enable-prefix-caching \
     --load-format instanttensor \
     --max-num-seqs {max_num_seqs} \

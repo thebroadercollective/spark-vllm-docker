@@ -41,7 +41,9 @@ command: |
     --runner pooling \
     --trust-remote-code \
     --gpu-memory-utilization {gpu_memory_utilization} \
-    --enable-prefix-caching \
+    --limit-mm-per-prompt.video 0 \
+    --mm-processor-cache-gb 1 \
+    --no-enable-prefix-caching \
     --kv-cache-dtype fp8 \
     --max-model-len {max_model_len} \
     --load-format instanttensor
