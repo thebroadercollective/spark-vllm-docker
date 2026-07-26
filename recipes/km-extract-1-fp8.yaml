@@ -48,5 +48,5 @@ command: |
     --load-format instanttensor \
     --attention-backend flashinfer \
     --default-chat-template-kwargs '{{"enable_thinking": false}}' \
-    --speculative-config '{{"method": "mtp", "num_speculative_tokens": 3}}' \
+    --speculative-config '{{"method": "mtp", "num_speculative_tokens": 2}}' \
     --distributed-executor-backend ray
