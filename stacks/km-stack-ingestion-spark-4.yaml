@@ -17,7 +17,7 @@ recipes:
   - recipe: km-extract-2-fp8
     container_name: km-extract-2     # Docker --name; must be unique in this stack
     #port: 8000                     # served on http://host:8000
-    gpu_mem: 0.45                  # fraction of unified memory (run-recipe.py --gpu-mem)
+    gpu_mem: 0.40                  # fraction of unified memory (run-recipe.py --gpu-mem)
 
   # ---- Smaller second ----
   - recipe: km-ocr
