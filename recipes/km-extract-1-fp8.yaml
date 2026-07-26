@@ -22,7 +22,7 @@ defaults:
   port: 8001
   host: 0.0.0.0
   gpu_memory_utilization: 0.40
-  max_model_len: 49152
+  max_model_len: 65535
   max_num_batched_tokens: 16384
   max_num_seqs: 8
 
