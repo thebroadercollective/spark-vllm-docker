@@ -50,11 +50,12 @@ jobs:
     - name: Make scripts executable
       run: |
         chmod +x run-recipe.py run-recipe.sh run-stack.py run-stack.sh launch-cluster.sh
-        chmod +x tests/test_recipes.sh tests/test_stack.sh
+        chmod +x tests/test_recipes.sh tests/test_stack.sh tests/test_launch_cluster_image_sync.sh
 
     - name: Run recipe integration tests
       run: |
         ./tests/test_recipes.sh -v
+        ./tests/test_launch_cluster_image_sync.sh
 
     - name: Run stack integration tests
       run: |
