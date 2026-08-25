@@ -182,6 +182,23 @@ For periodic maintenance, I recommend using a filter: `docker builder prune --fi
 
 ## CHANGELOG
 
+### 2026-08-19
+
+#### Launch-time vLLM PR application
+
+`launch-cluster.sh` and `run-recipe.sh` now accept repeatable
+`--apply-vllm-pr <pr-num>` options. The launcher fetches each upstream PR once,
+validates that it only changes installed `vllm/` runtime files, and applies it
+to every newly created container in command-line layer order. PRs that require
+native compilation, dependency changes, or packaging changes are rejected with
+instructions to use the existing build-time option instead.
+
+Example:
+
+```bash
+./launch-cluster.sh --solo --apply-vllm-pr 52816 exec vllm serve Inferact/Qwen3.8-27B-NVFP4   --host 0.0.0.0   --port 8000   --trust-remote-code   --kv-cache-dtype fp8   --gpu-memory-utilization 0.7   --max-model-len 262144   --max-num-seqs 8   --max-num-batched-tokens 16384   --enable-chunked-prefill   --async-scheduling   --enable-prefix-caching   --speculative-config '{"method":"dflash","model": "z-lab/Qwen3.8-27B-DFlash2", "num_speculative_tokens":8}'   --load-format instanttensor   --reasoning-parser qwen3   --tool-call-parser qwen3_xml   --enable-auto-tool-choice
+```
+
 ### 2026-08-14
 
 #### B12X source branch update
@@ -1526,7 +1543,7 @@ For any branch, tag, or commit selected from `local-inference-lab/vllm`, the run
 | `--torchvision-version <version>` | Optional torchvision version (default: `0.28.0`) |
 | `--torchaudio-version <version>` | Optional torchaudio version (default: `2.11.0`; use `none` to omit it) |
 | `--flashinfer-ref <ref>` | FlashInfer commit SHA, branch or tag (default: `main`) |
-| `--apply-vllm-pr <pr-num>` | Apply a vLLM PR patch during build. Can be specified multiple times. |
+| `--apply-vllm-pr <pr-num>` | Apply a vLLM PR patch during the image build. Can be specified multiple times. This is distinct from the launch-time option accepted by `launch-cluster.sh` and `run-recipe.sh`. |
 | `--apply-preset-vllm-prs` | Apply preset vLLM PRs even when `--vllm-repo`, `--vllm-ref`, or `--apply-vllm-pr` would otherwise suppress them |
 | `--apply-flashinfer-pr <pr-num>` | Apply a FlashInfer PR patch during build. Can be specified multiple times. |
 | `--tf5` | Deprecated compatibility flag; pulls/tags the prebuilt image as `vllm-node-tf5` unless another build-forcing flag is set. Aliases: `--pre-tf, --pre-transformers`. |
@@ -1717,6 +1734,7 @@ discovered correctly:
 | `-e, --env` | Environment variable to pass to container (e.g. `-e VAR=val`). Can be used multiple times. |
 | `-j` | Number of parallel jobs for build environment variables (optional). |
 | `--apply-mod` | Apply mods/patches from specified directory. Can be used multiple times to apply multiple mods. |
+| `--apply-vllm-pr <pr-num>` | Fetch and apply an upstream vLLM PR to the installed runtime package before launch. Runtime-only; repeatable and ordered with `--apply-mod`. |
 | `--nccl-debug` | NCCL debug level (e.g., INFO, WARN). Defaults to INFO if flag is present but value is omitted. |
 | `--check-config` | Check configuration and auto-detection without launching. |
 | `--solo` | Solo mode: skip autodetection, launch only on current node, do not launch Ray cluster |
@@ -1922,6 +1940,7 @@ The repository includes several pre-configured mods in the `mods/` directory:
 - **fix-qwen3.5-chat-template/** and **fix-qwen3.6-chat-template/**: Install fixed chat templates used by the Qwen3.5 and Qwen3.6 recipes.
 - **fix-qwen3.5-autoround/**, **fix-qwen3-next-autoround/**, and **fix-qwen35-tp4-marlin/**: Model-specific Qwen AutoRound and Marlin compatibility fixes.
 - **fix-qwen3-coder-next/**: Qwen3-Coder-Next runtime and performance fixes.
+- **radixark-dspark/**: Routes Qwen DSpark checkpoints such as `RadixArk/Qwen3.8-27B-DSpark` to vLLM's Qwen3 DSpark loader instead of the DeepSeek-V4 loader.
 - **dspark-instanttensor/**: Filters embedded `mtp.*` DSpark draft weights before InstantTensor or safetensors I/O, preventing a second full-checkpoint load.
 - **gpu-mem-util-gb/**: Adds experimental `--gpu-memory-utilization-gb` support.
 - **kv-cache-prealloc-cleanup/**: Applies model-specific manual KV-cache startup tweaks: skip CUDA graph profiling when disabled by env and allow `--gpu-memory-utilization-gb` with `--kv-cache-memory-bytes`.
@@ -1959,6 +1978,51 @@ When using recipes, any mods listed in the recipe are applied first, followed by
 ```bash
 ./run-recipe.sh glm-4.7-flash-awq --solo --apply-mod ./mods/other-mod
 ```
+
+### Applying an Upstream PR at Launch Time
+
+For Python/package-only vLLM changes, `launch-cluster.sh` can create a temporary
+mod from an upstream PR without rebuilding the image or adding a permanent
+directory under `mods/`:
+
+```bash
+./launch-cluster.sh --solo \
+  --apply-vllm-pr 12345 \
+  exec vllm serve MODEL_NAME --port 8000 --host 0.0.0.0
+
+./run-recipe.sh glm-4.7-flash-awq --solo \
+  --apply-vllm-pr 12345
+```
+
+The PR diff is downloaded once on the head node, checksum-logged, and copied to
+every container through the normal mod distribution path. Multiple PRs are
+applied in the order specified. With direct launcher use, `--apply-mod` and
+`--apply-vllm-pr` share command-line ordering. With recipes, recipe-declared
+mods remain first, followed by command-line layers in their specified order.
+
+The runtime path only applies files installed under `vllm/`; tests, docs, and
+examples are ignored. A PR that changes CUDA/C++, build configuration,
+dependencies, packaging, or other source-tree files is rejected. Apply such a
+PR while building the image instead:
+
+```bash
+./build-and-copy.sh --apply-vllm-pr 12345
+```
+
+Runtime PR application requires `git` in the container. For an official vLLM
+image that omits it, put `mods/use-official-vllm` before the PR layer:
+
+```bash
+./launch-cluster.sh --solo \
+  --apply-mod mods/use-official-vllm \
+  --apply-vllm-pr 12345 \
+  exec vllm serve MODEL_NAME
+```
+
+The change is ephemeral and is reapplied whenever new containers are created.
+The launcher refuses `--apply-vllm-pr` when containers with the selected name
+are already running, because it cannot verify that those containers contain the
+requested patch.
 
 ### Creating Custom Mods
 

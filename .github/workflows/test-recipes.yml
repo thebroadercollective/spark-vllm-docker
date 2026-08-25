@@ -51,11 +51,13 @@ jobs:
       run: |
         chmod +x run-recipe.py run-recipe.sh run-stack.py run-stack.sh launch-cluster.sh
         chmod +x tests/test_recipes.sh tests/test_stack.sh tests/test_launch_cluster_image_sync.sh
+        chmod +x tests/test_launch_cluster_vllm_pr.sh
 
     - name: Run recipe integration tests
       run: |
         ./tests/test_recipes.sh -v
         ./tests/test_launch_cluster_image_sync.sh
+        ./tests/test_launch_cluster_vllm_pr.sh
 
     - name: Run stack integration tests
       run: |
